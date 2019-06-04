@@ -1,5 +1,5 @@
-README - Fast Light Tool Kit (FLTK) Version 1.3.5
--------------------------------------------------
+README - Fast Light Tool Kit (FLTK) Version 1.3.5, Direct2D MOD
+-----------------------------------------------------------------
 
 WHAT IS FLTK?
 
@@ -28,6 +28,14 @@ ON-LINE DOCUMENTATION
     this documentation is also available from the FLTK web site at:
 
         https://www.fltk.org/documentation.php
+
+DIRECT2D
+
+    This branch of 'win-d2d' is an experimental project to render 
+	GUI on Direct2D instead of GDI of Windows. Direct2D doesn't need
+	to wait for slow flushing, able to make fast re-drawing GUI for 
+	some games or smooth animations. This branch of fltk-1.3.5-2-ts
+	in progress to complete all functions.
 
 
 BUILDING AND INSTALLING FLTK UNDER UNIX AND Mac OS X
