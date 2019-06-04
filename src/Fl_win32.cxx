@@ -133,6 +133,25 @@ static HMODULE get_wsock_mod() {
   return s_wsock_mod;
 }
 
+// Direct2D related --
+static float currentDPI_x        = 0.0f;
+static float currentDPI_y        = 0.0f;
+
+ID2D1Factory*           initializeDFactory( HWND parent );
+ID2D1DCRenderTarget*    initializeRenderTargetDC( ID2D1Factory* pfac, HDC dc );
+ID2D1HwndRenderTarget*  initializeRenderTargetHWND();
+IDWriteFactory*         initializeWriteFactory();
+IWICImagingFactory*     initializeImageFactory();
+
+template <class T> void SafeRelease(T **ppT)
+{
+    if (*ppT)
+    {
+        (*ppT)->Release();
+        *ppT = NULL;
+    }
+}
+
 /*
  * Dynamic linking of imm32.dll
  * This library is only needed for a hand full (four ATM) functions relating to 
@@ -1762,6 +1781,16 @@ void Fl_Window::fullscreen_off_x(int X, int Y, int W, int H) {
   Fl::handle(FL_FULLSCREEN, this);
 }
 
+void Fl_X::release()
+{
+  if ( dxfactory != NULL )
+  {
+     SafeRelease( &dxwritefac );
+     SafeRelease( &dximagefac );
+     SafeRelease( &dxtarget );
+     SafeRelease( &dxfactory );
+  }    
+}
 
 ////////////////////////////////////////////////////////////////
 
@@ -2001,6 +2030,16 @@ Fl_X* Fl_X::make(Fl_Window* w) {
   if (!fl_clipboard_notify_empty() && clipboard_wnd == NULL)
     fl_clipboard_notify_target(x->xid);
 
+  // Setup Direct2D
+  printf( "initializing Direct2D ..." );
+  x->dxfactory = initializeDFactory( x->xid );
+  if ( x->dxfactory != NULL )
+  {
+     x->dxwritefac = initializeWriteFactory();
+     x->dximagefac = initializeImageFactory();
+     x->dxtarget   = initializeRenderTargetDC( x->dxfactory, GetDC( x->xid ) );
+  }
+  
   x->wait_for_expose = 1;
   if (fl_show_iconic) {showit = 0; fl_show_iconic = 0;}
   if (showit) {
@@ -2028,9 +2067,6 @@ Fl_X* Fl_X::make(Fl_Window* w) {
 
   return x;
 }
-
-
-
 
 /////////////////////////////////////////////////////////////////////////////
 /// Win32 timers
@@ -2835,6 +2871,90 @@ void Fl_Paged_Device::draw_decorated_window(Fl_Window *win, int x_offset, int y_
   // draw the window inner part
   this->print_widget(win, x_offset + bx, y_offset + (bt + by)/scaling);
 }
+
+// -- D2D new factory...
+ID2D1Factory* initializeDFactory( HWND parent )
+{
+    ID2D1Factory* newfac = NULL;
+
+    HRESULT hr = E_FAIL;
+    hr = D2D1CreateFactory( D2D1_FACTORY_TYPE_SINGLE_THREADED, &newfac );
+    if ( hr == S_OK )
+    {
+        newfac->GetDesktopDpi( &currentDPI_x, &currentDPI_y );
+        return newfac;
+    }
+
+    return NULL;
+}
+
+ID2D1DCRenderTarget* initializeRenderTargetDC( ID2D1Factory* pfac, HDC dc )
+{
+    if ( dc == NULL )
+        return NULL;
+    
+    ID2D1DCRenderTarget* newredner = NULL;
+
+    SetLayout( dc, LAYOUT_BITMAPORIENTATIONPRESERVED );
+
+    D2D1_RENDER_TARGET_PROPERTIES dxProp;
+
+    dxProp = RenderTargetProperties( D2D1_RENDER_TARGET_TYPE_DEFAULT,
+                                     PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,  
+                                     D2D1_ALPHA_MODE_PREMULTIPLIED ),
+                                     0,
+                                     0,
+                                     D2D1_RENDER_TARGET_USAGE_NONE,
+                                     D2D1_FEATURE_LEVEL_DEFAULT );
+
+    HRESULT hr = E_FAIL;
+    hr = pfac->CreateDCRenderTarget( &dxProp, &newredner );
+    if ( hr == S_OK )
+    {
+        return newredner;
+    }
+
+    return NULL;
+}
+
+IDWriteFactory* initializeWriteFactory()
+{
+    IDWriteFactory* newwritefac = NULL;
+    
+    HRESULT hr = E_FAIL;
+    hr = DWriteCreateFactory( DWRITE_FACTORY_TYPE_SHARED,
+                              __uuidof(IDWriteFactory),
+                              reinterpret_cast<IUnknown**>(&newwritefac) );
+    if ( hr == S_OK )
+    {
+        return newwritefac;
+    }
+
+    return NULL;
+}
+
+IWICImagingFactory* initializeImageFactory()
+{
+    static IWICImagingFactory* pWICImageFactory = NULL;
+    
+    if ( pWICImageFactory == NULL )
+    {
+        CoInitialize( NULL );
+
+        HRESULT hr = E_FAIL;
+        hr = CoCreateInstance( CLSID_WICImagingFactory,
+                               NULL,
+                               CLSCTX_INPROC_SERVER,
+                               IID_PPV_ARGS( &pWICImageFactory ) );
+        if ( hr == S_OK )
+        {
+            return pWICImageFactory;
+        }
+    }
+
+    return pWICImageFactory;
+}
+
 
 #ifdef USE_PRINT_BUTTON
 // to test the Fl_Printer class creating a "Print front window" button in a separate window

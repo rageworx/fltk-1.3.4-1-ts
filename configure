@@ -6620,6 +6620,8 @@ case $host_os_gui in
 	LDFLAGS="-mwindows $LDFLAGS"
 	DSOFLAGS="-mwindows $DSOFLAGS"
 	LIBS="$LIBS -lole32 -luuid -lcomctl32"
+	# Direct2D
+	LIBS="$LIBS -lwindowscodecs -ld2d1 -ldwrite -lwinmm -ldxguid"
 	if test "x$with_optim" = x; then
 	    	    with_optim="-O3"
 	fi

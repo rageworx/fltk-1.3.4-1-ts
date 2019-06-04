@@ -1629,6 +1629,8 @@ void Fl_Window::hide() {
     fl_update_clipboard();
   // Make sure we unlink this window from the clipboard chain
   fl_clipboard_notify_retarget(ip->xid);
+  // renive Direct2D 
+  ip->release();
   // Send a message to myself so that I'll get out of the event loop...
   PostMessage(ip->xid, WM_APP, 0, 0);
   if (ip->private_dc) fl_release_dc(ip->xid, ip->private_dc);

@@ -26,6 +26,14 @@
 #endif // !Fl_X_H
 
 #include <windows.h>
+// Direct2D
+#include <D2D1.h>
+#include <dwrite.h>
+#include <wincodec.h>
+
+// Direct2D namespace.
+using namespace D2D1;
+
 typedef HRGN Fl_Region;
 typedef HWND Window;
 typedef POINT XPoint;
@@ -75,6 +83,13 @@ public:
   HCURSOR cursor;
   int custom_cursor;
   HDC saved_hdc;  // saves the handle of the DC currently loaded
+
+  // related in Direct2D.
+  ID2D1Factory*        dxfactory;
+  ID2D1DCRenderTarget* dxtarget;
+  IWICImagingFactory*  dximagefac;
+  IDWriteFactory*      dxwritefac;
+  
   // static variables, static functions and member functions
   static Fl_X* first;
   static Fl_X* i(const Fl_Window* w) {return w->i;}
@@ -90,8 +105,10 @@ public:
   void set_icons();
   int set_cursor(Fl_Cursor);
   int set_cursor(const Fl_RGB_Image*, int, int);
+  void release();
   static Fl_X* make(Fl_Window*);
 };
+
 extern FL_EXPORT UINT fl_wake_msg;
 extern FL_EXPORT char fl_override_redirect; // hack into Fl_Window::make_xid()
 extern FL_EXPORT int fl_background_pixel;  // hack into Fl_Window::make_xid()
