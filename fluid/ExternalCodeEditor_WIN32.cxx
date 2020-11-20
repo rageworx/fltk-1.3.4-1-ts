@@ -146,7 +146,7 @@ void ExternalCodeEditor::close_editor() {
   // Wait until editor is closed + reaped
   while ( is_editing() ) {
     switch ( reap_editor() ) {
-      case -1:  // error
+      case (DWORD)-1:  // error
         fl_alert("Error reaping external editor\n"
                  "pid=%ld file=%s", long(pinfo_.dwProcessId), filename());
         break;
@@ -517,7 +517,7 @@ int ExternalCodeEditor::open_editor(const char *editor_cmd,
       // See if editor recently closed but not reaped; try to reap
       DWORD wpid = reap_editor();
       switch (wpid) {
-        case -1:        // wait failed
+        case (DWORD)-1:        // wait failed
           fl_alert("ERROR: WaitForSingleObject() failed: %s\nfile='%s', pid=%ld",
             get_ms_errmsg(), filename(), long(pinfo_.dwProcessId));
           return -1;

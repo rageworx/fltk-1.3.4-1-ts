@@ -32,7 +32,7 @@ const char *Fl_Quartz_Graphics_Driver::class_id = "Fl_Quartz_Graphics_Driver";
 #endif
 #if defined(WIN32) || defined(FL_DOXYGEN)
 const char *Fl_GDI_Graphics_Driver::class_id = "Fl_GDI_Graphics_Driver";
-const char *Fl_GDI_Printer_Graphics_Driver::class_id = "Fl_GDI_Printer_Graphics_Driver";
+const char *Fl_GDI_Printer_Graphics_Driver::class_id = "Fl_D2D_Printer_Graphics_Driver";
 #endif
 #if !(defined(__APPLE__) || defined(WIN32))
 const char *Fl_Xlib_Graphics_Driver::class_id = "Fl_Xlib_Graphics_Driver";

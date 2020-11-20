@@ -68,6 +68,15 @@ inline void XClipBox(Fl_Region r,XRectangle* rect) {
 #define XMapWindow(a,b) ShowWindow(b, SW_RESTORE)
 #define XUnmapWindow(a,b) ShowWindow(b, SW_HIDE)
 
+template <class T> void _SafeRelease(T **ppT)
+{
+    if (*ppT)
+    {
+        (*ppT)->Release();
+        *ppT = NULL;
+    }
+}
+
 // this object contains all win32-specific stuff about a window:
 // Warning: this object is highly subject to change!
 class FL_EXPORT Fl_X {
@@ -85,6 +94,8 @@ public:
   HDC saved_hdc;  // saves the handle of the DC currently loaded
 
   // related in Direct2D.
+  float                dpi_x;
+  float                dpi_y;
   ID2D1Factory*        dxfactory;
   ID2D1DCRenderTarget* dxtarget;
   IWICImagingFactory*  dximagefac;

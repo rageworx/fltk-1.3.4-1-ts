@@ -589,6 +589,10 @@ enum Fl_When { // Fl_Widget::when():
 
 /*@}*/		// group: Event States
 
+#ifdef _WIN32
+#  define FL_DIRECT2D   1
+#endif
+
 /** \name Box Types
     \brief FLTK standard box types
     

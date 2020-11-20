@@ -1934,7 +1934,9 @@ void Fl_Window::flush() {
   make_current();
 //if (damage() == FL_DAMAGE_EXPOSE && can_boxcheat(box())) fl_boxcheat = this;
   fl_clip_region(i->region); i->region = 0;
+  i->dxtarget->BeginDraw();
   draw();
+  i->dxtarget->EndDraw();
 }
 
 #ifdef WIN32

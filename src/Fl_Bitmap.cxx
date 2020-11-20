@@ -283,27 +283,87 @@ void Fl_Quartz_Graphics_Driver::draw(Fl_Bitmap *bm, int XP, int YP, int WP, int 
 }
 
 #elif defined(WIN32)
-void Fl_GDI_Graphics_Driver::draw(Fl_Bitmap *bm, int XP, int YP, int WP, int HP, int cx, int cy) {
-  int X, Y, W, H;
-  if (bm->start(XP, YP, WP, HP, cx, cy, X, Y, W, H)) {
-    return;
-  }
-  
-  HDC tempdc = CreateCompatibleDC(fl_gc);
-  int save = SaveDC(tempdc);
-  SelectObject(tempdc, (HGDIOBJ)bm->id_);
-  SelectObject(fl_gc, fl_brush());
-  // secret bitblt code found in old MSWindows reference manual:
-  BitBlt(fl_gc, X, Y, W, H, tempdc, cx, cy, 0xE20746L);
-  RestoreDC(tempdc, save);
-  DeleteDC(tempdc);
+void Fl_GDI_Graphics_Driver::draw(Fl_Bitmap *bm, int XP, int YP, int WP, int HP, int cx, int cy) 
+{
+    int X, Y, W, H;
+    if (bm->start(XP, YP, WP, HP, cx, cy, X, Y, W, H)) 
+    {
+        return;
+    }
+      
+    HRESULT hr = S_FALSE;
+    D2D1_SIZE_U  bmpsz = SizeU( bm->w(), bm->h() );
+    int bmppt = bm->w() * 4;
+
+    Fl_X* x = Fl_X::i( fl_find( fl_window ) );
+    
+    if ( ( x == NULL ) || ( x->dxtarget == NULL ) )
+    {
+        HDC tempdc = CreateCompatibleDC(fl_gc);
+        int save = SaveDC(tempdc);
+        SelectObject(tempdc, (HGDIOBJ)bm->id_);
+        SelectObject(fl_gc, fl_brush());
+        // secret bitblt code found in old MSWindows reference manual:
+        BitBlt(fl_gc, X, Y, W, H, tempdc, cx, cy, 0xE20746L);
+        RestoreDC(tempdc, save);
+        DeleteDC(tempdc);
+    }
+    else
+    {
+        D2D1_BITMAP_PROPERTIES bmpp;
+        bmpp.dpiX = x->dpi_x;
+        bmpp.dpiY = x->dpi_y;
+        
+        switch( bm->d() )
+        {
+            case 3:
+                bmpp.pixelFormat.format    = DXGI_FORMAT_B8G8R8X8_UNORM;
+                bmpp.pixelFormat.alphaMode = D2D1_ALPHA_MODE_IGNORE;
+                break;
+                
+            case 4:
+                bmpp.pixelFormat.format    = DXGI_FORMAT_B8G8R8A8_UNORM;
+                bmpp.pixelFormat.alphaMode = D2D1_ALPHA_MODE_PREMULTIPLIED;
+                break;
+                
+            default:
+                return;
+        }
+
+        ID2D1Bitmap* d2dbmp = NULL;
+        unsigned char* data = (unsigned char*)bm->data()[0];
+        
+        hr = x->dxtarget->CreateBitmap( bmpsz, (void*)data, bmppt, &bmpp, &d2dbmp );
+        if ( hr == S_OK )
+        {
+            D2D1_RECT_F  putrc = {0};
+            putrc.left   = XP;
+            putrc.top    = YP;
+            putrc.right  = WP;
+            putrc.bottom = HP;
+            
+            x->dxtarget->DrawBitmap( d2dbmp,
+                                     putrc,
+                                     1.0f,
+                                     D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+                                     NULL );
+            _SafeRelease( &d2dbmp );
+            
+            printf( "draw_successed()\n" ); fflush( stdout );
+        }
+    }
 }  
 
-void Fl_GDI_Printer_Graphics_Driver::draw(Fl_Bitmap *bm, int XP, int YP, int WP, int HP, int cx, int cy) {
+void Fl_GDI_Printer_Graphics_Driver::draw(Fl_Bitmap *bm, int XP, int YP, int WP, int HP, int cx, int cy) 
+{
   int X, Y, W, H;
   typedef BOOL (WINAPI* fl_transp_func)  (HDC,int,int,int,int,HDC,int,int,int,int,UINT);
   static fl_transp_func fl_TransparentBlt = NULL;
   static HMODULE hMod = NULL;
+  
+  printf( "Fl_GDI_Printer_Graphics_Driver::draw()\n" );
+  fflush(stdout);
+  
   if (!hMod) {
     hMod = LoadLibrary("MSIMG32.DLL");
     if (hMod) fl_TransparentBlt = (fl_transp_func)GetProcAddress(hMod, "TransparentBlt");

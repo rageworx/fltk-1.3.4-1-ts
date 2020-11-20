@@ -42,6 +42,18 @@
 #  include <unistd.h>
 #endif
 
+// test
+#ifndef FL_DIRECT2D
+    #define FL_DIRECT2D
+#endif 
+
+#ifdef FL_DIRECT2D
+// --- it requires D2D1, DirectX.
+#include <D2D1.h>
+#include <dwrite.h>
+#include <wincodec.h>
+#endif /// of FL_DIRECT2D
+
 #if !defined(NO_TRACK_MOUSE)
 #  include <commctrl.h>	// TrackMouseEvent
 // fabien: Ms Visual Studio >= 2003 permit embedded lib reference
@@ -105,6 +117,114 @@ static bool initial_clipboard = true;
 // note: winsock2.h has been #include'd in Fl.cxx
 #define WSCK_DLL_NAME "WS2_32.DLL"
 
+#ifdef FL_DIRECT2D
+// Direct2D instances --
+ID2D1Factory*           fl_d2dfactory       = NULL;
+ID2D1DCRenderTarget*    fl_d2dtargetDC      = NULL;
+ID2D1HwndRenderTarget*  fl_d2dtargetHWND    = NULL;
+IDWriteFactory*         fl_writefactory     = NULL;
+IWICImagingFactory*     fl_d2dimagefactory  = NULL;
+IDWriteTextFormat*      fl_textfmttmp       = NULL;
+
+// Direct2D related --
+static float            fl_currentDPI_x     = 0.0f;
+static float            fl_currentDPI_y     = 0.0f;
+#endif /// of FL_DIRECT2D
+
+#ifdef FL_DIRECT2D
+ID2D1Factory* fl_initializeDFactory( HWND parent )
+{
+    if ( fl_d2dfactory != NULL )
+        return fl_d2dfactory;
+
+    HRESULT hr = E_FAIL;
+
+    hr = D2D1CreateFactory( D2D1_FACTORY_TYPE_SINGLE_THREADED, &fl_d2dfactory );
+
+    if ( hr == S_OK )
+    {
+        fl_d2dfactory->GetDesktopDpi( &fl_currentDPI_x, &fl_currentDPI_y );
+
+        return fl_d2dfactory;
+    }
+
+    return NULL;
+}
+
+ID2D1DCRenderTarget* fl_initializeRenderTargetDC( ID2D1Factory* d2df, HDC dc )
+{
+    if ( d2df == NULL )
+        return NULL;
+
+    if ( dc == NULL )
+        return NULL;
+
+    SetLayout( dc, LAYOUT_BITMAPORIENTATIONPRESERVED );
+
+    D2D1_RENDER_TARGET_PROPERTIES dxProp;
+
+    dxProp = RenderTargetProperties( D2D1_RENDER_TARGET_TYPE_DEFAULT,
+                                     PixelFormat( DXGI_FORMAT_B8G8R8A8_UNORM,  
+                                                  D2D1_ALPHA_MODE_PREMULTIPLIED ),
+                                     0,
+                                     0,
+                                     D2D1_RENDER_TARGET_USAGE_NONE,
+                                     D2D1_FEATURE_LEVEL_DEFAULT );
+
+    HRESULT hr = E_FAIL;
+
+    hr = d2df->CreateDCRenderTarget( &dxProp, &fl_d2dtargetDC );
+
+    if ( hr == S_OK )
+    {
+        return fl_d2dtargetDC;
+    }
+
+    return NULL;
+}
+
+IDWriteFactory* fl_initializeWriteFactory()
+{
+    if ( fl_writefactory != NULL )
+        return fl_writefactory;
+
+    HRESULT hr = E_FAIL;
+
+    hr = DWriteCreateFactory( DWRITE_FACTORY_TYPE_SHARED,
+                              __uuidof(IDWriteFactory),
+                              reinterpret_cast<IUnknown**>(&fl_writefactory) );
+
+    if ( hr == S_OK )
+    {
+        return fl_writefactory;
+    }
+
+    return NULL;
+}
+
+IWICImagingFactory* fl_initializeImageFactory()
+{
+    if ( fl_d2dimagefactory != NULL )
+        return fl_d2dimagefactory;
+
+    CoInitialize( NULL );
+
+    HRESULT hr = E_FAIL;
+
+    hr = CoCreateInstance( CLSID_WICImagingFactory,
+                           NULL,
+                           CLSCTX_INPROC_SERVER,
+                           IID_PPV_ARGS( &fl_d2dimagefactory ) );
+
+    if ( hr == S_OK )
+    {
+        return fl_d2dimagefactory;
+    }
+
+    return NULL;
+}
+#endif /// of FL_DIRECT2D
+
 // Patch for MinGW (__MINGW32__): see STR #3454 and src/Fl.cxx
 #ifdef __MINGW32__
 typedef int(WINAPI *fl_wsk_fd_is_set_f)(unsigned int, void *);
@@ -131,25 +251,6 @@ static HMODULE get_wsock_mod() {
     fl_wsk_fd_is_set = (fl_wsk_fd_is_set_f) GetProcAddress(s_wsock_mod, "__WSAFDIsSet");
   }
   return s_wsock_mod;
-}
-
-// Direct2D related --
-static float currentDPI_x        = 0.0f;
-static float currentDPI_y        = 0.0f;
-
-ID2D1Factory*           initializeDFactory( HWND parent );
-ID2D1DCRenderTarget*    initializeRenderTargetDC( ID2D1Factory* pfac, HDC dc );
-ID2D1HwndRenderTarget*  initializeRenderTargetHWND();
-IDWriteFactory*         initializeWriteFactory();
-IWICImagingFactory*     initializeImageFactory();
-
-template <class T> void SafeRelease(T **ppT)
-{
-    if (*ppT)
-    {
-        (*ppT)->Release();
-        *ppT = NULL;
-    }
 }
 
 /*
@@ -1183,30 +1284,38 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
     Fl_X *i = Fl_X::i(window);
     i->wait_for_expose = 0;
     char redraw_whole_window = false;
-    if (!i->region && window->damage()) {
-      // Redraw the whole window...
-      i->region = CreateRectRgn(0, 0, window->w(), window->h());
-      redraw_whole_window = true;
-    }
+    
+    if ( i->dxfactory != NULL )
+    {
+        if (!i->region && window->damage()) {
+          // Redraw the whole window...
+          i->region = CreateRectRgn(0, 0, window->w(), window->h());
+          redraw_whole_window = true;
+        }
 
-    // We need to merge WIN32's damage into FLTK's damage.
-    R = CreateRectRgn(0,0,0,0);
-    int r = GetUpdateRgn(hWnd,R,0);
-    if (r==NULLREGION && !redraw_whole_window) {
-      XDestroyRegion(R);
-      break;
-    }
+        // We need to merge WIN32's damage into FLTK's damage.
+        R = CreateRectRgn(0,0,0,0);
+        int r = GetUpdateRgn(hWnd,R,0);
+        if (r==NULLREGION && !redraw_whole_window) {
+          XDestroyRegion(R);
+          break;
+        }
 
-    if (i->region) {
-      // Also tell WIN32 that we are drawing someplace else as well...
-      CombineRgn(i->region, i->region, R, RGN_OR);
-      XDestroyRegion(R);
-    } else {
-      i->region = R;
+        if (i->region) {
+          // Also tell WIN32 that we are drawing someplace else as well...
+          CombineRgn(i->region, i->region, R, RGN_OR);
+          XDestroyRegion(R);
+        } else {
+          i->region = R;
+        }
+        if (window->type() == FL_DOUBLE_WINDOW) ValidateRgn(hWnd,0);
+        else ValidateRgn(hWnd,i->region);
     }
-    if (window->type() == FL_DOUBLE_WINDOW) ValidateRgn(hWnd,0);
-    else ValidateRgn(hWnd,i->region);
-
+    else
+    {
+        // don't need to flush on DX2D.
+    }
+    
     window->clear_damage((uchar)(window->damage()|FL_DAMAGE_EXPOSE));
     // These next two statements should not be here, so that all update
     // is deferred until Fl::flush() is called during idle.  However WIN32
@@ -1785,10 +1894,10 @@ void Fl_X::release()
 {
   if ( dxfactory != NULL )
   {
-     SafeRelease( &dxwritefac );
-     SafeRelease( &dximagefac );
-     SafeRelease( &dxtarget );
-     SafeRelease( &dxfactory );
+     _SafeRelease( &dxwritefac );
+     _SafeRelease( &dximagefac );
+     _SafeRelease( &dxtarget );
+     _SafeRelease( &dxfactory );
   }    
 }
 
@@ -2031,13 +2140,21 @@ Fl_X* Fl_X::make(Fl_Window* w) {
     fl_clipboard_notify_target(x->xid);
 
   // Setup Direct2D
-  printf( "initializing Direct2D ..." );
-  x->dxfactory = initializeDFactory( x->xid );
+  printf( "--debug-- Setup Direct2D\n" );
+  x->dxfactory = fl_initializeDFactory( x->xid );
   if ( x->dxfactory != NULL )
   {
-     x->dxwritefac = initializeWriteFactory();
-     x->dximagefac = initializeImageFactory();
-     x->dxtarget   = initializeRenderTargetDC( x->dxfactory, GetDC( x->xid ) );
+     x->dxwritefac = fl_initializeWriteFactory();
+     x->dximagefac = fl_initializeImageFactory();
+     x->dxtarget   = fl_initializeRenderTargetDC( x->dxfactory, GetDC( x->xid ) );
+     x->dpi_x      = fl_currentDPI_x;
+     x->dpi_y      = fl_currentDPI_y;
+     
+     printf(" ... successfully setup fl_initializeDFactory()\n" );
+  }
+  else
+  {
+      printf(" ... failed to setup fl_initializeDFactory()\n" );
   }
   
   x->wait_for_expose = 1;
@@ -2871,90 +2988,6 @@ void Fl_Paged_Device::draw_decorated_window(Fl_Window *win, int x_offset, int y_
   // draw the window inner part
   this->print_widget(win, x_offset + bx, y_offset + (bt + by)/scaling);
 }
-
-// -- D2D new factory...
-ID2D1Factory* initializeDFactory( HWND parent )
-{
-    ID2D1Factory* newfac = NULL;
-
-    HRESULT hr = E_FAIL;
-    hr = D2D1CreateFactory( D2D1_FACTORY_TYPE_SINGLE_THREADED, &newfac );
-    if ( hr == S_OK )
-    {
-        newfac->GetDesktopDpi( &currentDPI_x, &currentDPI_y );
-        return newfac;
-    }
-
-    return NULL;
-}
-
-ID2D1DCRenderTarget* initializeRenderTargetDC( ID2D1Factory* pfac, HDC dc )
-{
-    if ( dc == NULL )
-        return NULL;
-    
-    ID2D1DCRenderTarget* newredner = NULL;
-
-    SetLayout( dc, LAYOUT_BITMAPORIENTATIONPRESERVED );
-
-    D2D1_RENDER_TARGET_PROPERTIES dxProp;
-
-    dxProp = RenderTargetProperties( D2D1_RENDER_TARGET_TYPE_DEFAULT,
-                                     PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,  
-                                     D2D1_ALPHA_MODE_PREMULTIPLIED ),
-                                     0,
-                                     0,
-                                     D2D1_RENDER_TARGET_USAGE_NONE,
-                                     D2D1_FEATURE_LEVEL_DEFAULT );
-
-    HRESULT hr = E_FAIL;
-    hr = pfac->CreateDCRenderTarget( &dxProp, &newredner );
-    if ( hr == S_OK )
-    {
-        return newredner;
-    }
-
-    return NULL;
-}
-
-IDWriteFactory* initializeWriteFactory()
-{
-    IDWriteFactory* newwritefac = NULL;
-    
-    HRESULT hr = E_FAIL;
-    hr = DWriteCreateFactory( DWRITE_FACTORY_TYPE_SHARED,
-                              __uuidof(IDWriteFactory),
-                              reinterpret_cast<IUnknown**>(&newwritefac) );
-    if ( hr == S_OK )
-    {
-        return newwritefac;
-    }
-
-    return NULL;
-}
-
-IWICImagingFactory* initializeImageFactory()
-{
-    static IWICImagingFactory* pWICImageFactory = NULL;
-    
-    if ( pWICImageFactory == NULL )
-    {
-        CoInitialize( NULL );
-
-        HRESULT hr = E_FAIL;
-        hr = CoCreateInstance( CLSID_WICImagingFactory,
-                               NULL,
-                               CLSCTX_INPROC_SERVER,
-                               IID_PPV_ARGS( &pWICImageFactory ) );
-        if ( hr == S_OK )
-        {
-            return pWICImageFactory;
-        }
-    }
-
-    return pWICImageFactory;
-}
-
 
 #ifdef USE_PRINT_BUTTON
 // to test the Fl_Printer class creating a "Print front window" button in a separate window
